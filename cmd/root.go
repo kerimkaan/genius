@@ -4,6 +4,7 @@ Copyright © 2024 Kerim Kaan Dönmez <kaan@kerimkaan.com>
 package cmd
 
 import (
+	"genius/constants"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -32,7 +33,7 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-
+	rootCmd.Version = constants.VERSION
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.genius.yaml)")
 
 	// Cobra also supports local flags, which will only run
