@@ -23,8 +23,9 @@ import (
 
 // infoCmd represents the info command
 var infoCmd = &cobra.Command{
-	Use:   "info",
-	Short: "Get a brief system information",
+	Use:     "info",
+	Aliases: []string{"i"},
+	Short:   "Get a brief system information",
 	Long: `
 Get a brief system information such as hostname, OS, architecture, kernel version, platform, platform family,
 platform version, virtualization system, virtualization role, hostID, uptime, boot time, procs, load average, CPU model,
@@ -65,11 +66,13 @@ disk filesystem, interface name, interface hardware address, interface MTU, IPv4
 			log.Println(err)
 			panic(err)
 		}
+		// Swap memory information
 		swapInfo, err := mem.SwapMemory()
 		if err != nil {
 			log.Println(err)
 			panic(err)
 		}
+
 		// Get disk usage information
 		diskInfo, err := disk.Usage("/")
 		if err != nil {
