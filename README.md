@@ -15,5 +15,5 @@ go build -ldflags="-s -w" -o /usr/local/bin/genius main.go
 ## Usage
 
 ```bash
-genius info
+genius help
 ```
