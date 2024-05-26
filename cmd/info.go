@@ -81,11 +81,7 @@ disk filesystem, interface name, interface hardware address, interface MTU, IPv4
 		}
 
 		// Get NTP configurations from /etc/ntp.conf
-		ntpConfig, err := helpers.ReadNTPConfFile()
-		if err != nil {
-			log.Println(err)
-			// panic(err)
-		}
+		ntpConfig, ntpError := helpers.ReadNTPConfFile()
 
 		virtSystem := !(hInfo.VirtualizationSystem == "")
 		virtName := hInfo.VirtualizationSystem
@@ -162,7 +158,7 @@ disk filesystem, interface name, interface hardware address, interface MTU, IPv4
 		}
 		fmt.Println("DNS Servers: ", resolvConf.Servers)
 
-		if *ntpConfig == nil {
+		if ntpError != nil {
 			fmt.Println("NTP Configuration is not available")
 		} else {
 			for _, ntp := range *ntpConfig {
