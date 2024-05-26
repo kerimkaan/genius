@@ -132,7 +132,7 @@ disk filesystem, interface name, interface hardware address, interface MTU, IPv4
 			panic(err)
 		}
 		for _, i := range ifaces {
-			if i.Name == "en0" {
+			if i.Name == "en0" || i.Name == "ens160" {
 				addrs, err := i.Addrs()
 				if err != nil {
 					log.Println(err)
@@ -144,7 +144,7 @@ disk filesystem, interface name, interface hardware address, interface MTU, IPv4
 						fmt.Println("Interface Name: ", i.Name)
 						fmt.Println("Interface Hardware Address: ", i.HardwareAddr)
 						fmt.Println("Interface MTU: ", i.MTU)
-						fmt.Println("IPv4 of en0: ", ipv4)
+						fmt.Println("IPv4: ", ipv4)
 					}
 				}
 			}
