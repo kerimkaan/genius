@@ -161,9 +161,14 @@ disk filesystem, interface name, interface hardware address, interface MTU, IPv4
 			panic(err)
 		}
 		fmt.Println("DNS Servers: ", resolvConf.Servers)
-		for _, ntp := range *ntpConfig {
-			fmt.Println("NTP Server: ", ntp.Server)
-			fmt.Println("NTP Burst Option: ", ntp.IBurst)
+
+		if *ntpConfig == nil {
+			fmt.Println("NTP Configuration is not available")
+		} else {
+			for _, ntp := range *ntpConfig {
+				fmt.Println("NTP Server: ", ntp.Server)
+				fmt.Println("NTP Burst Option: ", ntp.IBurst)
+			}
 		}
 
 		// Get the ntp pool time
