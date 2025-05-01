@@ -3,8 +3,12 @@ package helpers
 import (
 	"fmt"
 	"genius/types"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 )
 
 // CheckFileExists checks if the file exists in the given path
@@ -77,4 +81,109 @@ func ReadNTPConfFile() (*[]types.NTPConfiguration, error) {
 		})
 	}
 	return &ntpConfig, nil
+}
+
+// FolderSize holds folder path and its size
+type FolderSize struct {
+	Path string
+	Size int64
+}
+
+// GetLargestFolders returns the largest n folders under the given root directory
+func GetLargestFolders(root string, n int) ([]FolderSize, error) {
+	folders := make(map[string]int64)
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && path != root {
+			var size int64
+			filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if !info.IsDir() {
+					size += info.Size()
+				}
+				return nil
+			})
+			folders[path] = size
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert map to slice
+	var folderSizes []FolderSize
+	for k, v := range folders {
+		folderSizes = append(folderSizes, FolderSize{Path: k, Size: v})
+	}
+	// Sort by size descending
+	sort.Slice(folderSizes, func(i, j int) bool {
+		return folderSizes[i].Size > folderSizes[j].Size
+	})
+	if len(folderSizes) > n {
+		folderSizes = folderSizes[:n]
+	}
+	return folderSizes, nil
+}
+
+// GetLargestFoldersConcurrent returns the largest n folders under the given root directory using concurrency
+func GetLargestFoldersConcurrent(root string, n int) ([]FolderSize, error) {
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+
+	var wg sync.WaitGroup
+	folderSizesCh := make(chan FolderSize, len(dirs))
+
+	for _, dir := range dirs {
+		if dir.IsDir() {
+			wg.Add(1)
+			go func(d os.DirEntry) {
+				defer wg.Done()
+				path := filepath.Join(root, d.Name())
+				size := int64(0)
+				filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
+					if err != nil {
+						return nil // Permission denied gibi hataları atla
+					}
+					if !info.IsDir() {
+						size += info.Size()
+					}
+					return nil
+				})
+				folderSizesCh <- FolderSize{Path: path, Size: size}
+			}(dir)
+		}
+	}
+
+	wg.Wait()
+	close(folderSizesCh)
+
+	var folderSizes []FolderSize
+	for fs := range folderSizesCh {
+		folderSizes = append(folderSizes, fs)
+	}
+
+	sort.Slice(folderSizes, func(i, j int) bool {
+		return folderSizes[i].Size > folderSizes[j].Size
+	})
+	if len(folderSizes) > n {
+		folderSizes = folderSizes[:n]
+	}
+	return folderSizes, nil
+}
+
+// GetUserHomeDir returns the current user's home directory
+func GetUserHomeDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return home, nil
 }
