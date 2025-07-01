@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.0.9 - 2025-07-01
+
+### Changed
+- Updated dns to v1.1.66
+- Updated go to 1.24.4
+
 ## v0.0.8 - 2025-05-01
 
 ### Added

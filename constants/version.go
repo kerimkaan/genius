@@ -2,8 +2,8 @@ package constants
 
 const (
 	// Version is the current version of the application
-	VERSION = "0.0.8"
+	VERSION = "0.0.9"
 	MAJOR   = 0
 	MINOR   = 0
-	PATCH   = 8
+	PATCH   = 9
 )

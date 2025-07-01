@@ -1,11 +1,10 @@
 module genius
 
-go 1.24.2
+go 1.24.4
 
 require (
 	github.com/beevik/ntp v1.4.3
-	github.com/miekg/dns v1.1.65
-	github.com/shirou/gopsutil v3.21.11+incompatible
+	github.com/miekg/dns v1.1.66
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.9.1
 )
