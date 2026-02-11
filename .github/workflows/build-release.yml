@@ -61,4 +61,4 @@ jobs:
           goarch: amd64
           cgo_enabled: 0
           build_args: -ldflags "-s -w"
-          build_tags: darwin-arm64
+          build_tags: darwin-amd64
