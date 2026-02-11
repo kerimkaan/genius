@@ -117,7 +117,7 @@ func GetLargestFoldersConcurrent(root string, n int) ([]types.FolderSize, error)
 
 			path := filepath.Join(root, d.Name())
 			size := int64(0)
-			filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
+			_ = filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
 				if err != nil {
 					return nil // skip permission errors
 				}
