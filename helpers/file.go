@@ -1,9 +1,9 @@
 package helpers
 
 import (
+	"bufio"
 	"fmt"
 	"genius/types"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,158 +14,126 @@ import (
 // CheckFileExists checks if the file exists in the given path
 // and returns a boolean value.
 func CheckFileExists(path string) bool {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }
 
-// ReadNTPConfFile reads the NTP configuration file and returns the content.
-// The NTP configuration file is located at /etc/ntp.conf
-// and it contains the NTP server addresses.
-// The NTP server addresses are used to get the time from the NTP server.
-func ReadNTPConfFile() (*[]types.NTPConfiguration, error) {
-	ntpConfFile := "/etc/ntp.conf"
-	// Or if it has chrony installed
-	// ntpConfFile := "/etc/chrony/chrony.conf"
+// ntpConfPaths lists the possible NTP configuration file locations.
+var ntpConfPaths = []string{
+	"/etc/ntp.conf",
+	"/etc/chrony/chrony.conf",
+	"/etc/chrony.conf",
+}
 
-	if !CheckFileExists(ntpConfFile) {
-		return nil, fmt.Errorf("NTP configuration file %s does not exist.", ntpConfFile)
+// ReadNTPConfFile reads the NTP configuration file and returns the parsed
+// NTP server entries. It checks multiple known config file paths
+// (/etc/ntp.conf, /etc/chrony/chrony.conf, /etc/chrony.conf).
+func ReadNTPConfFile() ([]types.NTPConfiguration, error) {
+	var confFile string
+	for _, path := range ntpConfPaths {
+		if CheckFileExists(path) {
+			confFile = path
+			break
+		}
 	}
-	// Read the NTP configuration file
-	// and return the content
-	ntpFile, err := os.ReadFile(ntpConfFile)
+	if confFile == "" {
+		return nil, fmt.Errorf("no NTP configuration file found (checked: %s)", strings.Join(ntpConfPaths, ", "))
+	}
+
+	file, err := os.Open(confFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open %s: %w", confFile, err)
 	}
-	stringNTPFile := string(ntpFile)
+	defer file.Close()
 
-	// We have NTP config file something like this:
-	// server          0.us.pool.ntp.org               iburst
-	// server          1.us.pool.ntp.org               iburst
-	// server          2.us.pool.ntp.org               iburst
-	// server          3.us.pool.ntp.org               iburst
+	var configs []types.NTPConfiguration
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 
-	// Find the server addresses in the NTP configuration file
-	// and return them
-	if strings.Index(stringNTPFile, "server") == -1 {
-		return nil, fmt.Errorf("NTP server addresses not found in %s", ntpConfFile)
-	}
-	// Remove the comments and get the server addresses
-	if strings.Index(stringNTPFile, "#") != -1 {
-		stringNTPFile = stringNTPFile[:strings.Index(stringNTPFile, "#")] // Remove the comments
-	}
-	stringNTPFile = stringNTPFile[strings.Index(stringNTPFile, "server")+7:] // Get the server addresses
-	// Replace the "server" keyword with an empty string
-	stringNTPFile = strings.ReplaceAll(stringNTPFile, "server", "")
+		// Remove inline comments
+		if idx := strings.Index(line, "#"); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
 
-	stringNTPFile = strings.ReplaceAll(stringNTPFile, "\n", " ")
-	stringArrayNTPFile := strings.Fields(stringNTPFile)
-
-	var ntpConfig []types.NTPConfiguration
-	for i, server := range stringArrayNTPFile {
-		if server == "iburst" {
-			continue
-		} else if server == "" {
+		// Skip empty lines and non-server lines
+		if line == "" || (!strings.HasPrefix(line, "server") && !strings.HasPrefix(line, "pool")) {
 			continue
 		}
-		var iburst bool
-		if i+1 >= len(stringArrayNTPFile) {
-			iburst = false
-		} else {
-			iburst = stringArrayNTPFile[i+1] == "iburst"
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
 		}
-		ntpConfig = append(ntpConfig, types.NTPConfiguration{
+
+		server := fields[1]
+		iburst := false
+		for _, f := range fields[2:] {
+			if f == "iburst" {
+				iburst = true
+				break
+			}
+		}
+		configs = append(configs, types.NTPConfiguration{
 			Server: server,
 			IBurst: iburst,
 		})
 	}
-	return &ntpConfig, nil
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading %s: %w", confFile, err)
+	}
+
+	if len(configs) == 0 {
+		return nil, fmt.Errorf("no NTP server entries found in %s", confFile)
+	}
+
+	return configs, nil
 }
 
-// FolderSize holds folder path and its size
-type FolderSize struct {
-	Path string
-	Size int64
-}
+// maxConcurrentWalkers limits the number of concurrent goroutines for folder scanning.
+const maxConcurrentWalkers = 10
 
-// GetLargestFolders returns the largest n folders under the given root directory
-func GetLargestFolders(root string, n int) ([]FolderSize, error) {
-	folders := make(map[string]int64)
+// GetLargestFoldersConcurrent returns the largest n folders under the given
+// root directory using bounded concurrency.
+func GetLargestFoldersConcurrent(root string, n int) ([]types.FolderSize, error) {
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory %s: %w", root, err)
+	}
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrentWalkers)
+	folderSizesCh := make(chan types.FolderSize, len(dirs))
+
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
 		}
-		if d.IsDir() && path != root {
-			var size int64
-			filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
+		wg.Add(1)
+		go func(d os.DirEntry) {
+			defer wg.Done()
+			sem <- struct{}{}        // acquire
+			defer func() { <-sem }() // release
+
+			path := filepath.Join(root, d.Name())
+			size := int64(0)
+			_ = filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
 				if err != nil {
-					return err
+					return nil // skip permission errors
 				}
 				if !info.IsDir() {
 					size += info.Size()
 				}
 				return nil
 			})
-			folders[path] = size
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert map to slice
-	var folderSizes []FolderSize
-	for k, v := range folders {
-		folderSizes = append(folderSizes, FolderSize{Path: k, Size: v})
-	}
-	// Sort by size descending
-	sort.Slice(folderSizes, func(i, j int) bool {
-		return folderSizes[i].Size > folderSizes[j].Size
-	})
-	if len(folderSizes) > n {
-		folderSizes = folderSizes[:n]
-	}
-	return folderSizes, nil
-}
-
-// GetLargestFoldersConcurrent returns the largest n folders under the given root directory using concurrency
-func GetLargestFoldersConcurrent(root string, n int) ([]FolderSize, error) {
-	dirs, err := os.ReadDir(root)
-	if err != nil {
-		return nil, err
-	}
-
-	var wg sync.WaitGroup
-	folderSizesCh := make(chan FolderSize, len(dirs))
-
-	for _, dir := range dirs {
-		if dir.IsDir() {
-			wg.Add(1)
-			go func(d os.DirEntry) {
-				defer wg.Done()
-				path := filepath.Join(root, d.Name())
-				size := int64(0)
-				filepath.Walk(path, func(fp string, info os.FileInfo, err error) error {
-					if err != nil {
-						return nil // Permission denied gibi hataları atla
-					}
-					if !info.IsDir() {
-						size += info.Size()
-					}
-					return nil
-				})
-				folderSizesCh <- FolderSize{Path: path, Size: size}
-			}(dir)
-		}
+			folderSizesCh <- types.FolderSize{Path: path, Size: size}
+		}(dir)
 	}
 
 	wg.Wait()
 	close(folderSizesCh)
 
-	var folderSizes []FolderSize
+	var folderSizes []types.FolderSize
 	for fs := range folderSizesCh {
 		folderSizes = append(folderSizes, fs)
 	}
@@ -179,11 +147,11 @@ func GetLargestFoldersConcurrent(root string, n int) ([]FolderSize, error) {
 	return folderSizes, nil
 }
 
-// GetUserHomeDir returns the current user's home directory
+// GetUserHomeDir returns the current user's home directory.
 func GetUserHomeDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 	return home, nil
 }

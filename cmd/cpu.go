@@ -16,56 +16,56 @@ var cpuCmd = &cobra.Command{
 	Aliases: []string{"c"},
 	Short:   "Detailed CPU information",
 	Long:    `Get detailed CPU information such as physical cores, logical cores, CPU model, CPU cores, CPU usage percentage and CPU times.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		physicalCores, _ := cpu.Counts(false)
+	RunE: func(cmd *cobra.Command, args []string) error {
+		physicalCores, err := cpu.Counts(false)
+		if err != nil {
+			return fmt.Errorf("failed to get physical core count: %w", err)
+		}
 
-		logicalCores, _ := cpu.Counts(true)
+		logicalCores, err := cpu.Counts(true)
+		if err != nil {
+			return fmt.Errorf("failed to get logical core count: %w", err)
+		}
 
 		cpuInfo, err := cpu.Info()
 		if err != nil {
-			fmt.Println(err)
+			return fmt.Errorf("failed to get CPU info: %w", err)
+		}
+
+		fmt.Println(separator)
+		fmt.Println("CPU Information")
+		fmt.Printf("  Physical Cores: %d\n", physicalCores)
+		fmt.Printf("  Logical Cores:  %d\n", logicalCores)
+
+		for i, info := range cpuInfo {
+			fmt.Printf("  CPU %d: %s (%.0f MHz, %d cores)\n", i, info.ModelName, info.Mhz, info.Cores)
 		}
 
 		percents, err := cpu.Percent(0, true)
 		if err != nil {
-			if err.Error() == "not implemented yet" {
-				percents = nil
+			fmt.Printf("  CPU Usage: not available (%s)\n", err)
+		} else {
+			fmt.Println("  CPU Usage per Core:")
+			for i, p := range percents {
+				fmt.Printf("    Core %d: %.2f%%\n", i, p)
 			}
 		}
 
 		times, err := cpu.Times(true)
 		if err != nil {
-			if err.Error() == "not implemented yet" {
-				times = []cpu.TimesStat{}
+			fmt.Printf("  CPU Times: not available (%s)\n", err)
+		} else {
+			fmt.Println("  CPU Times per Core:")
+			for i, t := range times {
+				fmt.Printf("    Core %d: user=%.1f system=%.1f idle=%.1f\n",
+					i, t.User, t.System, t.Idle)
 			}
 		}
-
-		fmt.Println("Physical cores:", physicalCores)
-		fmt.Println("Logical cores:", logicalCores)
-		fmt.Println("CPU Info:", cpuInfo)
-		if percents == nil {
-			fmt.Println("CPU Percent: Not implemented yet")
-		} else {
-			fmt.Println("CPU Percent:", percents)
-		}
-		if len(times) == 0 {
-			fmt.Println("CPU Times: Not implemented yet")
-		} else {
-			fmt.Println("CPU Times:", times)
-		}
+		fmt.Println(separator)
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(cpuCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// cpuCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// cpuCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
