@@ -1,9 +1,7 @@
 package constants
 
-const (
-	// Version is the current version of the application
-	VERSION = "0.0.9"
-	MAJOR   = 0
-	MINOR   = 0
-	PATCH   = 9
-)
+// Version is the current version of the application.
+// It can be overridden at build time using ldflags:
+//
+//	go build -ldflags "-X genius/constants.Version=1.0.0"
+var Version = "0.0.10"
